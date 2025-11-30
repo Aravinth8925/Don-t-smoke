@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Smoking Reduction Tracker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #fff;
+      padding: 20px;
+    }
+    h1 { text-align: center; color: #22c55e; }
+    .card {
+      max-width: 500px;
+      margin: auto;
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px #000;
+      position: relative;
+      margin-bottom: 20px;
+    }
+    input, select, button { width: 100%; margin: 8px 0; padding: 10px; border-radius: 8px; border: none; }
+    button { cursor: pointer; font-weight: bold; }
+    .primary { background: #22c55e; color: white; }
+    .danger { background: #ef4444; color: white; }
+    .secondary { background: #3b82f6; color: white; }
+    .hidden { display: none; }
+    .progress-bar { height: 20px; background: #334155; border-radius: 10px; overflow: hidden; margin: 10px 0; }
+    .progress { height: 100%; background: #22c55e; width: 100%; }
+    .health div { margin: 6px 0; }
+    ul { padding-left: 20px; }
+    .corner-reset {
+      position: absolute;
+      top: 12px; right: 12px;
+      background: rgba(255,255,255,0.15);
+      color: white; border: none; padding: 6px 10px;
+      border-radius: 50%; font-size: 14px; cursor: pointer; width: auto;
+    }
+    .corner-reset:hover { background: red; transform: scale(1.1); }
+  </style>
+</head>
+<body>
+
+<h1>🚭 Smoking Reduction Tracker</h1>
+
+<!-- STEP 1: Setup -->
+<div class="card" id="setupCard">
+  <h2>Set Your Target</h2>
+  <label>Target Cigarettes:</label>
+  <input type="number" id="targetInput" placeholder="Enter count, e.g., 20">
+  <label>Period:</label>
+  <select id="periodInput" onchange="showDatePicker()">
+    <option value="Day">Per Day</option>
+    <option value="Week">Per Week</option>
+    <option value="Month">Per Month</option>
+    <option value="Year">Per Year</option>
+  </select>
+  <div id="dateSelection" style="display:none;">
+    <label id="dateLabel">Select Date/Range:</label>
+    <input type="date" id="startDate">
+    <input type="date" id="endDate" class="hidden">
+  </div>
+  <button class="primary" onclick="startJourney()">Start Tracking</button>
+  <button class="secondary" onclick="showManual()">How to Use</button>
+  <div id="manual" class="hidden">
+    <p>1. Enter the number of cigarettes you plan to smoke for the selected period.<br>
+       2. Select the period (Day/Week/Month/Year) and date/range.<br>
+       3. Track your smoking by pressing "I Smoked One".<br>
+       4. You can view history and health impact anytime.<br>
+       5. Press "End Period" to see summary and advice.</p>
+  </div>
+</div>
+
+<!-- STEP 2: Tracker -->
+<div class="card hidden" id="trackerCard">
+  <button class="corner-reset" onclick="resetTracking()">🔄</button>
+  <h2>Remaining: <span id="remaining"></span></h2>
+  <div class="progress-bar"><div class="progress" id="progressBar"></div></div>
+  <button class="secondary" onclick="smokePopup()">🚬 I Smoked One</button>
+  <button onclick="viewHistory()">📜 View History</button>
+  <button class="danger" onclick="endPeriod()">End Period</button>
+  <h3>Health Impact</h3>
+  <div class="health" id="healthImpact"></div>
+</div>
+
+<!-- SMOKE REASON POPUP -->
+<div class="card hidden" id="popupCard">
+  <h3>Why did you smoke?</h3>
+  <select id="reasonSelect">
+    <option>Stress</option>
+    <option>With friends</option>
+    <option>Happiness</option>
+    <option>Sadness</option>
+    <option>Drinking</option>
+    <option>Boredom</option>
+    <option>Habit</option>
+    <option>After Food</option>
+  </select>
+  <button class="primary" onclick="confirmSmoke()">Confirm</button>
+</div>
+
+<!-- HISTORY & SUMMARY -->
+<div class="card hidden" id="historyCard">
+  <h2>Smoking History & Summary</h2>
+  <ul id="historyList"></ul>
+  <div id="summaryDiv"></div>
+  <button onclick="closeHistory()">Close</button>
+</div>
+
+<script>
+let target=0, remaining=0, period="", history=[];
+
+// restore previous session
+window.onload = ()=>{
+  if(localStorage.getItem("target")){
+    target=parseInt(localStorage.getItem("target"));
+    remaining=parseInt(localStorage.getItem("remaining"));
+    period=localStorage.getItem("period");
+    history=JSON.parse(localStorage.getItem("history")||"[]");
+    showTracker();
+  }
+}
+
+// Manual
+function showManual(){
+  document.getElementById("manual").classList.toggle("hidden");
+}
+
+// Show date pickers
+function showDatePicker(){
+  const p=document.getElementById("periodInput").value;
+  const div=document.getElementById("dateSelection");
+  const start=document.getElementById("startDate");
+  const end=document.getElementById("endDate");
+  const label=document.getElementById("dateLabel");
+  if(p==="Day"){ div.style.display="block"; start.type="date"; end.classList.add("hidden"); label.innerText="Select Date:";}
+  else if(p==="Week"){ div.style.display="block"; start.type="date"; end.classList.remove("hidden"); label.innerText="Select Week Range:";}
+  else if(p==="Month"){ div.style.display="block"; start.type="month"; end.classList.add("hidden"); label.innerText="Select Month:";}
+  else if(p==="Year"){ div.style.display="block"; start.type="number"; start.placeholder="Enter Year"; end.classList.add("hidden"); label.innerText="Enter Year:";}
+}
+
+// Start journey
+function startJourney(){
+  target=parseInt(document.getElementById("targetInput").value);
+  period=document.getElementById("periodInput").value;
+  if(!target || target<=0) return alert("Enter valid target");
+  remaining=target; history=[];
+  saveData();
+  showTracker();
+}
+
+// Show tracker page
+function showTracker(){
+  document.getElementById("setupCard").classList.add("hidden");
+  document.getElementById("trackerCard").classList.remove("hidden");
+  updateUI();
+}
+
+// Update UI
+function updateUI(){
+  document.getElementById("remaining").textContent=`${remaining} / ${target} (${period})`;
+  document.getElementById("progressBar").style.width=`${Math.min((remaining/target)*100,100)}%`;
+  updateHealthImpact();
+  saveData();
+}
+
+// Smoke one
+function smokePopup(){
+  document.getElementById("popupCard").classList.remove("hidden");
+}
+function confirmSmoke(){
+  let reason=document.getElementById("reasonSelect").value;
+  remaining--; history.push({date:new Date().toLocaleString(), reason});
+  if(remaining<0) alert("⚠ Limit exceeded!.");
+  document.getElementById("popupCard").classList.add("hidden");
+  updateUI();
+}
+
+// Health Impact
+function updateHealthImpact(){
+  let smoked=target-remaining;
+  document.getElementById("healthImpact").innerHTML=`
+    ❤️ Heart Damage: ${Math.min(smoked*3,100)}%
+    <br>🫁 Lung Damage: ${Math.min(smoked*4,100)}%
+    <br>🧠 Focus Loss: ${Math.min(smoked*2.5,100)}%
+    <br>💰 Money Loss: ${Math.min(smoked*5,100)}%
+    <br>⚡ Energy Drop: ${Math.min(smoked*3.5,100)}%
+  `;
+}
+
+// History & summary
+function viewHistory(){
+  const list=document.getElementById("historyList");
+  list.innerHTML=""; let reasonCount={};
+  history.forEach(h=>{
+    const li=document.createElement("li"); li.textContent=`${h.date} - ${h.reason}`; list.appendChild(li);
+    reasonCount[h.reason]=(reasonCount[h.reason]||0)+1;
+  });
+  let summary=document.getElementById("summaryDiv");
+  if(history.length>0){
+    let maxReason="", maxCount=0;
+    for(let r in reasonCount){ if(reasonCount[r]>maxCount){ maxCount=reasonCount[r]; maxReason=r; } }
+    let perc=Math.round(maxCount/history.length*100);
+    let totalSmoked=history.length;
+    let advice="";
+    if(remaining>=0){
+      advice=`🎉 Congrats! You stayed within your target.<br>Total smoked: ${totalSmoked}. Most reason: ${maxReason} (${perc}%). Keep following healthy habits.`;
+    } else {
+      advice=`⚠ You exceeded your limit.<br>Total smoked: ${totalSmoked}. Most reason: ${maxReason} (${perc}%). To reduce, try avoiding triggers for "${maxReason}".`;
+    }
+    summary.innerHTML=`<p>${advice}</p>`;
+  }
+  document.getElementById("historyCard").classList.remove("hidden");
+}
+function closeHistory(){ document.getElementById("historyCard").classList.add("hidden"); }
+
+// End period summary
+function endPeriod(){ viewHistory(); }
+
+// Reset tracking
+function resetTracking(){
+  if(!confirm("Restart? All data cleared.")) return;
+  localStorage.clear(); target=0; remaining=0; period=""; history=[];
+  document.getElementById("trackerCard").classList.add("hidden");
+  document.getElementById("setupCard").classList.remove("hidden");
+}
+
+// Save to localStorage
+function saveData(){
+  localStorage.setItem("target", target);
+  localStorage.setItem("remaining", remaining);
+  localStorage.setItem("period", period);
+  localStorage.setItem("history", JSON.stringify(history));
+}
+</script>
+
+</body>
+</html>
